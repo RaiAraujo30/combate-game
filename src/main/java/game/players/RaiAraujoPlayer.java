@@ -5,6 +5,7 @@ import game.feedbacks.AttackFeedback;
 import game.feedbacks.DefeatFeedback;
 import game.feedbacks.EqualStrengthFeedback;
 import game.feedbacks.Feedback;
+import game.feedbacks.MoveFeedback;
 import game.pieces.OpponentPiece;
 import game.pieces.Piece;
 import game.pieces.PieceAction;
@@ -28,10 +29,23 @@ public class RaiAraujoPlayer implements Player {
   private Map<String, Integer> enemyPiecesRemaining;
 
   private Stack<Piece> recentPiecesPlayed = new Stack<Piece>();
+  private Map<String, Integer> pieceStrength = new HashMap<>();
 
   public RaiAraujoPlayer(String name) {
     this.playerName = name;
     initEnemyKnowledge();
+    pieceStrength.put("PS", 0);   // Prisioneiro (não combate)
+    pieceStrength.put("M", 99);    // Mina (não se move)
+    pieceStrength.put("AS", 10);  // Agente Secreto (pode derrotar qualquer peça)
+    pieceStrength.put("G", 9);    // General
+    pieceStrength.put("CR", 8);   // Coronel
+    pieceStrength.put("MJ", 7);   // Major
+    pieceStrength.put("CP", 6);   // Capitão
+    pieceStrength.put("T", 5);    // Tenente
+    pieceStrength.put("ST", 4);   // Subtenente
+    pieceStrength.put("SG", 3);   // Sargento
+    pieceStrength.put("C", 2);    // Cabo
+    pieceStrength.put("S", 1);    // Soldado
   }
 
   @Override
@@ -288,6 +302,29 @@ public class RaiAraujoPlayer implements Player {
     clearCellDistribution(px, py);
   }
 
+  private void updateEnemyProbabilities(Board board) {
+    for (int x = 0; x < Board.ROWS; x++) {
+      for (int y = 0; y < Board.COLS; y++) {
+        Piece boardPiece = board.getPiece(x, y);
+        // Pra cada tipo do player atualiza as probabilidades
+        for (QuantityPerPiece qpp : QuantityPerPiece.values()) {
+          // só atualiza se for diferente de 0
+          if (enemyProbabilities[x][y].get(qpp.getCode()) != 0) {
+            // reseta a probabilidade
+            enemyProbabilities[x][y].put(qpp.getCode(), 0.0);
+            
+            if (boardPiece == null) // senão houver peça no mapa, não atualiza probabilidades
+              continue;
+            String code = qpp.getCode();
+            int remainingPiecesByCode = enemyPiecesRemaining.get(code);
+            double prob = remainingPiecesByCode / qpp.getQuantity();
+            enemyProbabilities[x][y].put(qpp.getCode(), prob);
+          }
+        }
+      }
+    }
+  }
+
   private boolean isEnemyPiece(Piece piece) {
     // Se a piece não for nula e o player != this.playerName
     if (piece == null || piece.getPlayer() == null)
@@ -450,17 +487,19 @@ public class RaiAraujoPlayer implements Player {
       return -9999.0;
     }
 
-    // Se for inimigo "real"
-    // TODO: se ja conhecemos a peça, basta calcular se ganhamos ou nao
-    if (!occPlayer.equals(this.playerName)) {
-      double winProb = estimateWinProbability(myPiece, tx, ty);
-      double bombRisk = estimateRiskOfBomb(tx, ty);
-      // base + 80*winProb - 30*bombRisk
-      return 10.0 + 80.0 * winProb - 30.0 * bombRisk;
-    }
-
     // Se for aliado => -9999
     return -9999.0;
+  }
+
+  private List<String> getStrongerCodes(String code) {
+    int myPieceStrength = pieceStrength.get(code);
+    List<String> strongers = new ArrayList<>();
+    for(var piece: pieceStrength.entrySet()) {
+      if (myPieceStrength >= piece.getValue()) {
+        strongers.add(piece.getKey());
+      }
+    }
+    return strongers;
   }
 
   /**
@@ -469,30 +508,38 @@ public class RaiAraujoPlayer implements Player {
    * para pontuar o ataque.
    */
   private double scoreAttackUnknown(Piece myPiece, int tx, int ty) {
-    int myStr = myPiece.getStrength();
-    double guessWinProb;
+    String code = myPiece.getRepresentation();
+    List<String> strongers = getStrongerCodes(code);
+    List<Double> probabilities = new ArrayList<>();
 
-    if (myStr >= 9)
-      guessWinProb = 0.9;
-    else if (myStr >= 6)
-      guessWinProb = 0.7;
-    else if (myStr == 3)
-      guessWinProb = 0.5;
-    else
-      guessWinProb = 0.3;
+    Map<String, Double> cellDist = enemyProbabilities[tx][ty];
+    for(var enemyPiece : cellDist.entrySet()) {
+        if (strongers.contains(enemyPiece.getKey()) && enemyPiece.getValue() > 0) {
+            probabilities.add(enemyPiece.getValue());
+        }
+    }
 
+    if (probabilities.isEmpty()) {
+        return 0;
+    }
+
+    probabilities.sort(Collections.reverseOrder());
+    double bestProbability = probabilities.get(0);
+    
     // Supõe chance de bomba de 20%
     double guessBomb = 0.2;
 
+    // Fórmula de pontuação (ajuste conforme sua lógica de jogo)
     double base = 10.0;
-    return base + 80.0 * guessWinProb - 30.0 * guessBomb;
-  }
+    return base + 80.0 * bestProbability - 30.0 * guessBomb;
+}
 
   @Override
   public PieceAction play(Board board, Feedback myLastFeedback, Feedback enemyLastFeedback) {
     // Atualiza prob
     updateKnowledgeFromFeedback(myLastFeedback);
     updateKnowledgeFromFeedback(enemyLastFeedback);
+    updateEnemyProbabilities(board);
 
     // Tenta escolher jogada
     PieceAction action = chooseMove(board);
@@ -500,6 +547,6 @@ public class RaiAraujoPlayer implements Player {
     if (action != null) {
       updateRecentActions(action.getPiece());
     } 
-    return action; //
+    return action;
   }
 }
