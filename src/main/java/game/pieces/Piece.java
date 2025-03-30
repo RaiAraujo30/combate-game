@@ -69,10 +69,13 @@ public abstract class Piece {
                 return this.fight(opponent);
             }
 
+            int posXTemp = posX;
+            int posYTemp = posY;
+
             board.setPiece(newX, newY, this);
             this.setPosition(newX, newY);
 
-            return new MoveFeedback(this);
+            return new MoveFeedback(this, posXTemp, posYTemp);
         }
 
         return new InvalidMoveFeedback(posX, posY, newX, newY);

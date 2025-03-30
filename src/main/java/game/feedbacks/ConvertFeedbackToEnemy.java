@@ -9,7 +9,7 @@ public class ConvertFeedbackToEnemy {
         }
 
         if (feedback instanceof MoveFeedback) {
-            return new MoveFeedback(new OpponentPiece(feedback.getPiece()));
+            return new MoveFeedback(new OpponentPiece(feedback.getPiece()), ((MoveFeedback) feedback).fromX, ((MoveFeedback) feedback).fromY);
         }
 
         return feedback; // LandmineFeedback, LandMineDeactivationFeedback, PrisonerFeedback, AttackFeedback, EqualStrengthFeedback, DefeatFeedback
